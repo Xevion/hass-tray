@@ -1,7 +1,9 @@
-# hass-tray
+# door-tray
 
 A simple Go application to display basic state details (via a tray icon) from a Home Assistant instance.
 
+- Easy install with a single binary
+  - Windows (Service), Linux (Systemd)
 - Ultra simple configuration
   - YAML configuration file
   - Environment variables
