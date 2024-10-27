@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -15,6 +16,12 @@ var (
 	service        *ga.Service
 	log            *slog.Logger
 	stateChannel   chan string
+	app            *ga.App
+)
+
+var (
+	//go:embed "resources/*.ico"
+	icons embed.FS
 )
 
 func HandleState(newState string) {
@@ -30,8 +37,10 @@ func HandleState(newState string) {
 }
 
 func setupHomeAssistant() {
+	var err error
+
 	// Connect to Home Assistant
-	app, err := ga.NewApp(ga.NewAppRequest{
+	app, err = ga.NewApp(ga.NewAppRequest{
 		IpAddress:        "home.imfucked.lol", // Replace with your Home Assistant IP Address
 		HAAuthToken:      os.Getenv("HA_AUTH_TOKEN"),
 		HomeZoneEntityId: "zone.home",
@@ -42,10 +51,6 @@ func setupHomeAssistant() {
 		log.Error("Error connecting to Home Assistant", "error", err)
 		os.Exit(1)
 	}
-	defer func() {
-		app.Cleanup()
-		log.Debug("Deferred!")
-	}()
 
 	service = app.GetService()
 
@@ -83,7 +88,7 @@ func main() {
 	slog.Info("Starting hass-tray")
 
 	go setupHomeAssistant()
-	systray.Run(onReady, onExit)
+	systray.Run(onReady, func() {})
 }
 
 func onReady() {
@@ -94,17 +99,17 @@ func onReady() {
 	menuOpenLogs.Disable()
 
 	// Load icons
-	openIcon, err := os.ReadFile("open.ico")
+	openIcon, err := icons.ReadFile("resources/open.ico")
 	if err != nil {
 		slog.Error("Unable to load icon", "error", err)
 		os.Exit(1)
 	}
-	closedIcon, err := os.ReadFile("closed.ico")
+	closedIcon, err := icons.ReadFile("resources/closed.ico")
 	if err != nil {
 		slog.Error("Unable to load icon", "error", err)
 		os.Exit(1)
 	}
-	unknownIcon, err := os.ReadFile("unknown.ico")
+	unknownIcon, err := icons.ReadFile("resources/unknown.ico")
 	if err != nil {
 		slog.Error("Unable to load icon", "error", err)
 		os.Exit(1)
@@ -118,14 +123,15 @@ func onReady() {
 	signal.Notify(interruptChannel, os.Interrupt)
 	signal.Notify(interruptChannel, os.Kill)
 
+loop:
 	for {
 		select {
-		case <-interruptChannel:
-			slog.Info("Received interrupt signal, quitting")
-			systray.Quit()
+		case signal := <-interruptChannel:
+			slog.Info("Received interrupt signal, quitting", "signal", signal)
+			break loop
 		case <-menuQuit.ClickedCh:
-			slog.Info("Requesting exit")
-			systray.Quit()
+			slog.Info("Quit clicked")
+			break loop
 		case newState := <-stateChannel:
 			if newState == "open" {
 				systray.SetIcon(openIcon)
@@ -137,8 +143,8 @@ func onReady() {
 			}
 		}
 	}
-}
 
-func onExit() {
-
+	slog.Info("Cleaning up")
+	systray.Quit()
+	app.Cleanup()
 }
